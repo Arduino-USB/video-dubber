@@ -1,85 +1,90 @@
-from torch.serialization import add_safe_globals
-from TTS.tts.models.xtts import XttsAudioConfig  # <-- important: import this exact class
 from TTS.api import TTS
+from audio_manager import get_pitch
 import os
 import uuid
 import librosa
 import soundfile as sf
 import math
-
-
-
-# Register the class globally, once per program run
-add_safe_globals([XttsAudioConfig])
+import json
 
 tts_model = TTS("tts_models/multilingual/multi-dataset/xtts_v2")
 
 final_output_file = None
 
-def change_pitch(file=None, output_file=None, pitch=1.0):
-	if file is None:
-		return -1, "You must provide an input file"
-
+def tts(text=None, output_file=None, lang=None, pitch=None, speaker_index=5, max_duration=None):
+	if text is None:
+		return -1, "You must provide text to generate speech with"	
+			
 	if output_file is None:
-		return -1, "You must provide an output file path"
-
-	if not os.path.exists(file):
-		return -1, "The input file does not exist"
-
-	y, sr = librosa.load(file, sr=None)
-
-	# Convert pitch factor to semitones
-	semitones = 12 * math.log2(pitch)
-
-	# Use keyword arguments (required in librosa >= 1.0)
-	y_shifted = librosa.effects.pitch_shift(y=y, sr=sr, n_steps=semitones)
-
-	sf.write(output_file, y_shifted, sr)
-
-	return 0, f"Pitch-shifted audio saved to {output_file}"
-
-def tts(text=None, output_file=None, lang=None, pitch=None, speaker_index=0):
-	
-	if text == None:
-		return -1, "You must provide text to generate speech with"
-	
-	if output_file == None:
 		return -1, "You must provide with an output file path"
 	
-	if lang == None:
-		return -1, "You must provide with a language"	
-	#tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2")
+	if lang is None:
+		return -1, "You must provide with a language"
 	
-#	print(tts_model.speakers)  # List available speakers (voices)
-	if pitch != None:	
+	global final_output_file
+	final_output_file = None
+
+	# Use temp file if pitch or max_duration is specified
+	use_temp = (pitch is not None) or (max_duration is not None)
+	
+	if use_temp:
 		final_output_file = output_file
-		output_file = str(uuid.uuid4()) + ".wav"
-			
+		temp_file = str(uuid.uuid4()) + ".wav"
+	else:
+		temp_file = output_file
+	
+	# Generate TTS audio to temp_file
 	tts_model.tts_to_file(
 		text=text,
-		speaker=tts_model.speakers[speaker_index],  # pick one speaker
-		file_path=output_file,
+		speaker=tts_model.speakers[speaker_index],
+		file_path=temp_file,
 		language=lang
 	)
 	
-	if pitch != None:
+	# Load audio
+	y, sr = librosa.load(temp_file, sr=None)
+	
+	# Speed up if max_duration given and audio too long
+	if max_duration is not None:
+		curr_duration = librosa.get_duration(y=y, sr=sr)
+		if curr_duration > max_duration:
+			speed_factor = curr_duration / max_duration
+			max_speed = 1.5
+			speed_factor = min(speed_factor, max_speed)
+			y = librosa.effects.time_stretch(y, rate=speed_factor)
+
+	# Apply pitch shift if pitch given
+	if pitch is not None:
 		ref_pitch = 146
 		pitch_factor = pitch / ref_pitch
-		change_pitch(file=output_file, output_file=final_output_file, pitch=pitch_factor)	
-		os.remove(output_file)
+		semitones = 12 * math.log2(pitch_factor)
+		y = librosa.effects.pitch_shift(y=y, sr=sr, n_steps=semitones)
+	
+	# Save final output
+	sf.write(final_output_file if use_temp else output_file, y, sr)
+	
+	# Remove temp file if used
+	if use_temp and os.path.exists(temp_file):
+		os.remove(temp_file)
+	
+	return 0, f"TTS audio generated and saved to {final_output_file if use_temp else output_file}"
 
 
-def get_speakers():
-	return tts_model.speakers
-#import asyncio
-#import edge_tts
-#
-#async def list_voices_backend():
-#	voices = await edge_tts.list_voices()
-#	return voices
-#
-#def list_voices():	
-#	voices = asyncio.run(list_voices_backend())
-#	for i in range(len(voices)):
-#		del voices[i]["Name"], voices[i]["SuggestedCodec"], voices[i]["Status"], voices[i]["FriendlyName"], voices[i]["VoiceTag"]
-#	return voices
+def get_voices():
+	if os.path.exists("voices.json"):
+		with open("voices.json", "r") as f:
+			voices_list = json.load(f) 
+			return voices_list
+		
+	speakers = tts_model.speakers
+	voices_list = []
+	for i in range(len(speakers)):
+		audio_clip = str(uuid.uuid4()) + ".wav" 
+		tts(text="Hello, World", speaker_index=i, lang="en", output_file=audio_clip)
+		pitch = get_pitch(file=audio_clip)
+		name = speakers[i]
+		cell = {"name" : name, "pitch" : pitch}
+		voices_list.append(cell)
+		os.remove(audio_clip)	
+
+	return voices_list
