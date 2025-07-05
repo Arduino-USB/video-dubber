@@ -39,4 +39,18 @@ python main.py -v video.mp4 -s subtitles.srt --create_save_file
 ```
 ## About Save Files 
 
-Save files allow you to stop and resume the dubbing process without starting over. This is especially handy for longer videos or if you need to pause your work. Arguments Summary -v, --video: Input video file to dub. -s, --subtitles: Subtitle file to use for dubbing. --save_file: Path to a JSON save file to load/save progress. --create_save_file: Create or update the save file during dubbing.
+Save files allow you to stop and resume the dubbing process without starting over. This is especially handy for longer videos or if you need to pause your work. 
+
+## Arguments Summary
+	```bash 
+	-v, --video: Input video file to dub.
+	```
+	```bash
+	-s, --subtitles: Subtitle file to use for dubbing. 
+	```
+	```bash
+	--save_file: Path to a JSON save file to load/save progress. 
+	```
+	```bash
+	--create_save_file: Create or update the save file during dubbing.
+	```
