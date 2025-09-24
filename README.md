@@ -21,11 +21,11 @@ python -m venv video_dubber_venv
 Activate it:
 Windows:
 ```batch
-source myenv/bin/activate
+source video_dubber_venv/bin/activate
 ```
 macOS/Linux:
 ```bash
-source myenv/bin/activate
+source video_dubber_venv/bin/activate
 ```
 
 Install the required Python packages: 
