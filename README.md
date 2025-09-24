@@ -1,6 +1,6 @@
 # Video Dudder Software Using TTS
 
-A tool to dub videos using text-to-speech (TTS) from subtitle files, with optional save file support for stopping and resuming.
+A tool to dub videos using text-to-speech (TTS) from subtitle files, with progress saving fucntionality. It's not perfect, so if you have any ideas on any fixes, make a push request!
 
 ## Getting started 
 
@@ -14,7 +14,21 @@ Change into the project directory: 
 ```bash
 cd video-dubber
 ```
- Install the required Python packages: 
+Create a python VENV
+```bash
+python -m venv video_dubber_venv
+```
+Activate it:
+Windows:
+```batch
+source myenv/bin/activate
+```
+macOS/Linux:
+```bash
+source myenv/bin/activate
+```
+
+Install the required Python packages: 
 ```bash
 pip install -r requirements.txt 
 ```
@@ -29,7 +43,7 @@ How to use the script
 python main.py -p project_name -v video.mp4 -s subtitles.srt --speakers 50 --from_lang en --to_lang ar
 ```
 Note: projects are the folders where all of the data will be saved. If you ran the script with a project name, closed it, and redid it, it would save to the same folder and resume
-Passing speakers (# of people that speak)is HIGHLY recommened, becuase otherwsie the program will tryto estimate and moix voices together
+Passing speakers (# of people that speak) is HIGHLY recommened, becuase otherwsie the program will tryto estimate and mix voices together
 
 
 ## Arguments Summary
