@@ -1,4 +1,4 @@
-# Video Dudder Software Using TTS
+# Video Dubber Software Using TTS
 
 A tool to dub videos using text-to-speech (TTS) from subtitle files, with progress saving fucntionality. It's not perfect, so if you have any ideas on any fixes, make a push request!
 
