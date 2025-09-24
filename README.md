@@ -24,25 +24,18 @@ Run the main script with your desired arguments:
 ```
 ## Usage Examples 
 
-Use a save file and keep updating it: 
+How to use the script
 ``` bash
-python main.py --save_file save_file_name.json --create_save_file
+python main.py -p project_name -v video.mp4 -s subtitles.srt --speakers 50 --from_lang en --to_lang ar
 ```
+Note: projects are the folders where all of the data will be saved. If you ran the script with a project name, closed it, and redid it, it would save to the same folder and resume
+Passing speakers (# of people that speak)is HIGHLY recommened, becuase otherwsie the program will tryto estimate and moix voices together
 
-Dub a video without creating a save file: 
-```bash
-python main.py -v video.mp4 -s subtitles.srt 
-```
-Dub a video from scratch and create a save file: 
-```bash
-python main.py -v video.mp4 -s subtitles.srt --create_save_file
-```
-## About Save Files 
-
-Save files allow you to stop and resume the dubbing process without starting over. This is especially handy for longer videos or if you need to pause your work. 
 
 ## Arguments Summary
 	-v, --video: Input video file to dub.
 	-s, --subtitles: Subtitle file to use for dubbing. 
-	--save_file: Path to a JSON save file to load/save progress. 
-	--create_save_file: Create or update the save file during dubbing.
+	-p, --project: Folder that you want data to be stored in
+	--speakers: Amount of people in video (maybe check the cast of a movie to get that)
+	--from-lang: The input language code (en -> English)
+	--to-lang: The output language (es -> Spanish)
