@@ -1,114 +1,21 @@
 import argparse
 import argostranslate.package
 import argostranslate.translate
-from subtitle_manager import parse
+from subtitle_manager import parse as subtitle_parse
 import ffmpeg
 import uuid
+import random
+from audio_manager import get_pitch
 from pydub import AudioSegment
-from tts_manager import tts, get_voices
-from audio_manager import get_pitch, is_same_speaker
+import machine
 import os
 import json
+import string
 
 
-def burn_audio(audio_filename=None, video_source=None, video_filename=None):
-	if not audio_filename or not video_source or not video_filename:
-		raise ValueError("audio_filename, video_source, and video_filename must all be provided")
+def random_fldr(length=7):	
+	return str().join(random.choices(string.ascii_letters + string.digits, k=length))
 
-	video_in = ffmpeg.input(video_source)
-	audio_in = ffmpeg.input(audio_filename)
-
-	# Combine streams without manual -map, keep video codec, encode audio as AAC
-	ffmpeg.output(
-		video_in['v'], audio_in['a'],
-		video_filename,
-		vcodec='copy',
-		acodec='aac',
-		strict='experimental'
-	).overwrite_output().run()
-
-
-
-
-
-
-
-
-def reconstruct_audio(audio=None, tts_file_map=None):	
-	if audio is None:
-		print(-1, "You must provide an AudioSegment object to use as a base")
-		return -1
-	
-	if tts_file_map is None:
-		print(-1, "You must provide a tts file map, which has names of tts output files along with timestamps they belong in")
-		return -1
-	
-	print("Reconstruction called")
-	for i in range(len(tts_file_map)):
-		item = tts_file_map[i]
-		filename = list(item.keys())[0]
-		timing = item[filename]
-
-		tts_audio = AudioSegment.from_wav(filename)
-		start = timing['start']
-		stop = timing['stop']
-
-		audio = audio[:start] + tts_audio + audio[stop:]
-
-	return audio
-
-
-def is_voice_unique(file=None, characters=None):
-
-	if file == None:
-		print(-1, "You must provide with a file to compare")
-
-	if characters == None:
-		print(-1, "You must provide with a list of unique audio files to compare to")
-	for i in range(len(characters)):
-		if is_same_speaker(characters[i], file):
-			return i
-	
-	return True
-
-def get_best_voice_from_voices(voices=None, pitch=None):
-	if voices == None:
-		print(-1, "You must provide a list of dictionaries of voices and pitches")
-	
-	if pitch == None:
-		print(-1, "You must provide a target pitch")
-	
-	winner_pitch = 0
-	winner_index = None
-	for i in range(len(voices)):
-		if abs(pitch - winner_pitch) > abs(voices[i]["pitch"]):
-			#print("Found a new winner with a pitch of", voices[i]["pitch"], "and the target is", pitch)
-			winner_pitch = voices[i]["pitch"]
-			winner_index = i
-		else:
-			#print("This pitch", voices[i]["pitch"], "is less close than", winner_pitch)
-			pass
-	
-	return winner_index
-
-def extract_audio(video_path):
-	audio_path = str(uuid.uuid4()) + ".wav"
-	ffmpeg.input(video_path).output(
-		audio_path,	
-		format='wav',
-		acodec='pcm_s16le',  # WAV codec
-		ar='16000',           # sample rate: 16kHz
-		ac=1,                 # mono channel
-		vn=None               # disable video
-	).run(overwrite_output=True, quiet=True)
-	
-	print("Trying to load:", audio_path)
-	print("Size:", os.path.getsize(audio_path), "bytes")
-	
-	audio = AudioSegment.from_file(audio_path)
-	os.remove(audio_path)	
-
-	return audio
 
 def install_package(from_code, to_code):
 	argostranslate.package.update_package_index()
@@ -116,150 +23,175 @@ def install_package(from_code, to_code):
 
 	for package in available_packages:
 		if package.from_code == from_code and package.to_code == to_code:
-			print(f"Installing translation package: {from_code} -> {to_code}")
+			print(f"[stager] Installing translation package: {from_code} ==> {to_code}")
 			downloaded_path = package.download()
 			argostranslate.package.install_from_path(downloaded_path)
 			# Refresh languages after install
 			argostranslate.translate.load_installed_languages()
 			return
 
-	print(f"No package found for {from_code} -> {to_code}")
+	print(f"[stager] No package found for {from_code} -> {to_code}")
 
-def main_parser(subs=None, audio=None, tts_lang=None, video_path=None, save_file=True, index=0, voices=get_voices(), characters=[], tts_file_map=[]):
-	print("Main video parser called")
-	for i in range(index, len(subs)):
-		#print(f"Characters list: \n {characters} \n")
-		#print(f"Voices list: \n {voices} \n")
-		start = subs[i]["timestamps"]["start"]
-		stop = subs[i]["timestamps"]["stop"]
-		segment = audio[start:stop]
-		segment_file = "segment_" + str(i) + ".wav"
-		segment.export(segment_file, format="wav")
-		print(f"Segment file created: {segment_file}")
-		segment_pitch = get_pitch(segment_file)
-		print(f"Segment pitch: {segment_pitch}")
-		elapsed = (stop - start) / 1000
-		tts_output_file = "tts_output_" + str(i) + ".wav"
-		if elapsed > 0.5:
-			print("Segment is long enough, proceeding")
-			is_voice_unique_output = is_voice_unique(file=segment_file, characters=characters)  
-			print(f"Voice is unique (int means no): {is_voice_unique_output}")
-			if is_voice_unique_output == True:
-				characters.append(segment_file)
-				print(f"Appended {segment_file} to characters, because it is unique from all other charactors in list")
-				voice_to_use = get_best_voice_from_voices(voices=voices, pitch=get_pitch(segment_file))
-			else:
-				voice_to_use = is_voice_unique_output
-				voices.pop(voice_to_use)
-	
-			tts(
-				text=subs[i]["text"], 
-				output_file=tts_output_file, 
-				lang=tts_lang, 
-				speaker_index=voice_to_use
-			)
-			
-			tts_file_map.append({tts_output_file:subs[i]["timestamps"]})	
-		else:
-			print("Segment too short, skipping and deleteing")
-
-		#print(f"tts_file_map : \n {tts_file_map} \n")	
-
-		if save_file:
-			print("Saving progress")
-			
-			save_dict = {
-				"subs" : subs,
-				"index" : i,
-				"video" : video_path,
-				"voices" : voices,
-				"tts_file_map" : tts_file_map,
-				"tts_lang" : tts_lang,
-				"characters" : characters	
-			}
-		
-			with open(f'savefile_{video_path}.json', 'w') as f:
-				json.dump(save_dict, f)	
-		
-			print("Progress saved.")	
-	
-	print("Done dubbing, removing segment files")	
-	for file in os.listdir():
-		if "segment_" in file:
-			print(f"Removing {file}")
-			os.remove(file)
-			
-	audio_dubbed = reconstruct_audio(audio=audio, tts_file_map=tts_file_map)
-	audio_dubbed.export("dubbed_audio.wav", format="wav")	
-	
-	#input() # acts like a pause for debug
-		
-	print(f"Burnring audio into dubbed_{video_path}")	
-	burn_audio(video_source=video_path, audio_filename="dubbed_audio.wav", video_filename=f"dubbed_{video_path}")
-
-	print("Deleteing dubbed_audio.wav")	
-	os.remove("dubbed_audio.wav")
-	
-	print("Deleting TTS output files")	
-	for file in os.listdir():
-		if "tts_output_" in file:
-			print(f"Removing {file}")
-			os.remove(file)
-
-	print("Done")
 
 def main():
 	parser = argparse.ArgumentParser(description="Replace subtitle lines with TTS in a video")
 	parser.add_argument("-v", "--video", default=None, help="Path to the input video file")
 	parser.add_argument("-s", "--subtitles", default=None, help="Path to the subtitle (.srt) file")
-	parser.add_argument("--from_lang", default="en", help="Source language code (default: en)")
-	parser.add_argument("--to_lang", default="es", help="Target language code (default: es)")
-	parser.add_argument( "--save_file", default=None, help="Add a save file to continue without restarting")
-	parser.add_argument("--create_save_file", action='store_true', default=False, help="Pass this to create a save file while generating TTS (defaule: False)")	
+	parser.add_argument("--from_lang", default=None, help="Source language code")
+	parser.add_argument("--to_lang", default=None, help="Target language code")
+	parser.add_argument("--similarity", default=0.30, help="Number of similarity to be considered same speaker (default: 0.30) (may need to adjust per video)")
+	parser.add_argument("-p", "--project", default=None, help="Project folder where everything will be or was saved ")
+	parser.add_argument("--speakers", default=None, help="Number of known speakes in video file ")
+	
 	args = parser.parse_args()
-	video_path = args.video
-	subtitles_path = args.subtitles
-	from_code = args.from_lang
-	to_code = args.to_lang
 	
-	if not args.save_file and not (args.video and args.subtitles):
-		parser.error("Either --save_file or video and subtitles must be provided.")	
-	
-	if args.save_file:
-		if not os.path.exists(args.save_file):
-			print("Save file doesnt exist")
-			return -1 
+	if args.project == None:
+		print("[stager] Project folder not passed, creating")
+
+
+		project = random_fldr()
+		print(f"[stager] Project folder: {project}")	
+		while os.path.exists(project):
+			print("[stager] That path already exists, trying again")
+			project = random_fldr()
 		
-		print("Save file found, loading")
-		with open(args.save_file, 'r') as f:
-			save_dict = json.load(f)
-			main_parser(
-				save_file=args.create_save_file,
-				subs=save_dict["subs"], 
-				audio=extract_audio(save_dict["video"]), 
-				video_path=save_dict["video"], 
-				index=save_dict["index"], 
-				characters=save_dict["characters"], 
-				voices=save_dict["voices"], 
-				tts_file_map=save_dict["tts_file_map"], 
-				tts_lang=save_dict["tts_lang"]
+		os.mkdir(project)
+		print(f"[stager] {project} created")
+		
+	elif not os.path.exists(args.project):
+		print("[stager] This project path doesn't exist, creating")	
+		
+		os.mkdir(args.project)
+
+		project = args.project
+	else:
+		print(f"[stager] Found {args.project}")
+		
+		project = args.project
+
+
+	if not (args.subtitles or args.video or args.to_lang or args.from_lang) and not os.path.exists(os.path.join(project, "metadata")):
+		print("[stager] [ERROR] Metadata doesn't exist, and args not suffiecnt")	
+		return -1
+
+		
+			
+	if args.video and args.subtitles:	
+		video_fullpath = os.path.abspath(args.video)
+		subtitles_fullpath = os.path.abspath(args.subtitles)
+
+	print(f"[stager] Changing into {project}")
+	os.chdir(project)
+	
+	
+	#Loading metadata
+	if os.path.exists("metadata"):
+		metadata = json.load(open("metadata", "r"))
+	else:
+		# Saving metadata	
+		metadata = {
+			"video" : video_fullpath,
+			"subtitles_path" : subtitles_fullpath,
+			"from_code" : args.from_lang,
+			"to_code" : args.to_lang,
+			"similarity" : args.similarity,
+			"speakers" : args.speakers
+		}
+		
+		json.dump(metadata, open("metadata", "w"))
+
+	#Loading varibles	
+	video_path = metadata["video"]
+	subtitles_path = metadata["subtitles_path"]
+	from_code = metadata["from_code"]	
+	to_code = metadata["to_code"]
+	similarity = metadata["similarity"]
+	speakers = metadata["speakers"]
+	
+	print(f"[stager] [DEBUG] {metadata}")
+	
+	#Subtitle stage	
+
+	if not os.path.exists("subtitles.parsed"):
+		print("[stager] Could not find parsed subtitles, parsing")
+		install_package(from_code, to_code)
+		subs = subtitle_parse(file=subtitles_path, from_lang=from_code, to_lang=to_code)
+		print("[stager] Parsed subtitles, saving")
+		json.dump({"subs" : subs}, open("subtitles.parsed", "w"))
+	else:
+		print("[stager] Found subtitle parse file, loading")
+		subs = json.load(open("subtitles.parsed"))["subs"]
+	
+	print("[stager] Subtitles loaded")
+	
+	audio = machine.extract_audio(video_path=video_path)	
+	# Segment Stage
+	if os.path.exists("stage0.output"):
+		print("[stager] Found stage 0 segments, saving")
+		segments = json.load(open("stage0.output", "r"))["segments"]
+	else:
+		print("[stager] Could not find stage 0 segments, running")
+		segments = machine.segment_stage(audio=machine.extract_audio(video_path=video_path, clean=True), video_path=video_path, subs=subs)
+	
+	print("[stager] Got segment files list")
+	
+
+
+	# Voices Stage
+	if os.path.exists("stage1.output"):
+		print("[stager] Found stage 1 clusters, saving")
+		clusters = json.load(open("stage1.output", "r"))["clusters"] 
+	else:
+		print("[stager] Could not find stage 1 clusters, running")
+		clusters = machine.voices_stage(eps=similarity)
+	
+	print("[stager] Got clusters")
+	
+	#TTS generation stage
+
+	if os.path.exists("stage2.output"):
+		print("[stager] Found stage 2 tts map, saving")
+		tts_map = json.load(open("stage2.output", "r"))["tts_map"]
+	else:
+		print("[stager] Could not find stage 2 output, checking for save")
+		if os.path.exists("stage2.json"):
+			print("[stager] Found stage2.json, loading")
+			save_data = json.load(open("stage2.json", "r"))
+			install_package(from_code, to_code)
+			tts_map = machine.tts_stage(
+				segment_files=segments, 
+				subs=subs, 
+				clusters=clusters, 
+				tts_lang=save_data["tts_lang"], 
+				index_i=save_data["index_i"], 
+				index_j=save_data["index_j"], 
+				voices=save_data["voices"], 
+				tts_map=save_data["tts_map"]
 			)
+		
+		else:
+			print("[stager] No stage 2 json found, running")
+			tts_map = machine.tts_stage(segment_files=segments, subs=subs, clusters=clusters, tts_lang=to_code)	
 
-	print(f"Input video: {video_path}")
-	print(f"Subtitle file: {subtitles_path}")
-	print(f"Translating from {from_code} to {to_code}")
-
-	install_package(from_code, to_code)
-
-	# Parse subtitles (placeholder)
-
-	print("Parsing and translating subtitles")
-	subs = parse(file=subtitles_path, from_lang=from_code, to_lang=to_code)
+	print("[stager] Got tts map")
+			
+	if not os.path.exists("dubbed_audio.wav"):		
+		audio = machine.extract_audio(video_path=video_path)
+		print("[stager] Could not find dubbed audio, running stage 3 audio glue")
+		combined_audio = machine.audio_stage(audio=audio, tts_file_map=tts_map)
+	else:
+		print("[stager] Found dubbed audio")
+		
+	print("[stager] Got dubbed audio")
+		
+	#def burn_audio_stage(audio_filename=None, video_source=None, video_filename=None
 	
-	print("Extracting audio")
-	audio = extract_audio(video_path=video_path)
+	if not os.path.exists(f"{video_path}_dubbed.mp4"):
+		print("[stager] Could not find output video, creating")
+		machine.burn_audio_stage(audio_filename="dubbed_audio.wav", video_source=video_path, video_filename=os.path.join(os.path.dirname(video_path), f"dubbed_{os.path.basename(video_path)}"))
 	
-	main_parser(save_file=args.create_save_file, subs=subs, audio=audio, tts_lang=to_code, video_path=video_path)	
+	
+	print("[stager] All done")
 	
 if __name__ == "__main__":
 	main()

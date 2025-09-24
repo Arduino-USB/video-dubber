@@ -1,21 +1,8 @@
 import numpy as np
 import os
 import parselmouth
-from resemblyzer import VoiceEncoder, preprocess_wav
 from scipy.spatial.distance import cosine
 import numpy as np
-
-encoder = VoiceEncoder()
-
-def is_same_speaker(file1, file2, threshold=0.70):
-	wav1 = preprocess_wav(file1)
-	wav2 = preprocess_wav(file2)
-	emb1 = encoder.embed_utterance(wav1)
-	emb2 = encoder.embed_utterance(wav2)
-	sim = 1 - cosine(emb1, emb2)
-	print(f"Similarity: {sim:.3f}")
-	return bool(sim >= threshold)
-
 
 def get_pitch(file):
 	if not file or not os.path.exists(file):

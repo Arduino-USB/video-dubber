@@ -72,9 +72,12 @@ def tts(text=None, output_file=None, lang=None, pitch=None, speaker_index=5, max
 
 def get_voices():
 	if os.path.exists("voices.json"):
+		print("Found voices.json cache, skipping JSON build step")
 		with open("voices.json", "r") as f:
 			voices_list = json.load(f) 
 			return voices_list
+	else:
+		print("Couldn't find voices.json, building JSON file")
 		
 	speakers = tts_model.speakers
 	voices_list = []
@@ -83,8 +86,10 @@ def get_voices():
 		tts(text="Hello, World", speaker_index=i, lang="en", output_file=audio_clip)
 		pitch = get_pitch(file=audio_clip)
 		name = speakers[i]
-		cell = {"name" : name, "pitch" : pitch}
+		cell = {"pitch" : pitch, "id" : i}
 		voices_list.append(cell)
 		os.remove(audio_clip)	
-
+	
+	with open("voices.json", "w") as f:
+		json.dump(voices_list, f)
 	return voices_list
